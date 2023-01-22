@@ -6,6 +6,6 @@ const heros = require("./hero.route");
 
 router.use("/person", person);
 router.use("/primogems", primogems);
-router.use("/", heros);
+router.use("/heros", heros);
 
 module.exports = router;

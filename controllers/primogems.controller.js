@@ -42,6 +42,20 @@ class primogemsController {
     });
     res.json({ count, rows });
   }
+  async getLastPrimogems(req, res, next) {
+    const { personId } = req.body;
+    if (!personId) {
+      return next(ApiError.badRequest("Не задан personId"));
+    }
+    const row = await primogems.findAll({
+      limit: 1,
+      where: {
+        personId,
+      },
+      order: [["createdAt", "DESC"]],
+    });
+    res.json(row);
+  }
 }
 
 module.exports = new primogemsController();

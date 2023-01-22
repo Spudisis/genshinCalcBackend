@@ -23,9 +23,9 @@ const primogems = sequelize.define("primogems", {
 const hero = sequelize.define("hero", {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   date_start: { type: DataTypes.STRING, unique: false, allowNull: false },
-  date_end: { type: DataTypes.STRING, unique: false, allowNull: true },
+  date_end: { type: DataTypes.STRING, unique: false, allowNull: false, defaultValue: "" },
   name: { type: DataTypes.STRING, unique: false, allowNull: false },
-  image: { type: DataTypes.STRING, unique: false, allowNull: false },
+  image: { type: DataTypes.STRING, unique: false, allowNull: true },
   imagePath: { type: DataTypes.BOOLEAN, unique: false, allowNull: false },
   valueDayByDay: { type: DataTypes.INTEGER, unique: false, allowNull: false, defaultValue: 0 },
   countAdd: { type: DataTypes.INTEGER, unique: false, allowNull: false, defaultValue: 0 },
