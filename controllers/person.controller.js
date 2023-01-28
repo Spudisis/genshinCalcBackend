@@ -1,46 +1,65 @@
-const { person } = require("../models/models");
-const ApiError = require("../error/ApiError");
-const bcrypt = require("bcrypt");
-const jwt = require("jsonwebtoken");
-
-const generateJwt = (id, login, role) => {
-  return jwt.sign({ id, login, role }, process.env.SECRET_KEY, { expiresIn: "72h" });
-};
+const userService = require("../service/user-service");
 
 class PersonController {
   async registration(req, res, next) {
-    const { login, password, role } = req.body;
-    if (!login || !password) {
-      return next(ApiError.badRequest("Не задан NAME или PASS"));
+    try {
+      const { login, password } = req.body;
+      const userData = await userService.registration(login, password);
+      res.cookie("refreshToken", userData.refreshToken, { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true });
+      return res.json({ userData });
+    } catch (error) {
+      next(error);
     }
-    const candidate = await person.findOne({ where: { login } });
-    if (candidate) {
-      return next(ApiError.badRequest("Email существует"));
-    }
-    const hashPassword = await bcrypt.hash(password, 5);
-    const newUser = await person.create({ login, role, password: hashPassword });
-    const token = generateJwt(newUser.id, newUser.login, newUser.role);
-    return res.json({ token });
   }
   async login(req, res, next) {
-    const { login, password } = req.body;
-    if (!login || !password) {
-      return next(ApiError.badRequest("Не задан NAME или PASS"));
+    try {
+      const { login, password } = req.body;
+      const userData = await userService.login(login, password);
+      res.cookie("refreshToken", userData.refreshToken, { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true });
+      return res.json({ userData });
+    } catch (error) {
+      next(error);
     }
-    const user = await person.findOne({ where: { login } });
-    if (!user) {
-      return next(ApiError.badRequest("Email не существует"));
-    }
-    let comparePassword = bcrypt.compareSync(password, user.password);
-    if (!comparePassword) {
-      return next(ApiError.badRequest("Неверный пароль"));
-    }
-    const token = generateJwt(user.id, user.login, user.role);
-    return res.json({ token });
   }
-  async check(req, res, next) {
-    const token = generateJwt(req.user.id, req.user.login, req.user.role);
-    res.json({ token });
+
+  async logout(req, res, next) {
+    try {
+      const { refreshToken } = req.cookies;
+      const token = await userService.logout(refreshToken);
+      res.clearCookie("refreshToken");
+      return res.json(token);
+    } catch (error) {
+      next(error);
+    }
+  }
+  async activate(req, res, next) {
+    try {
+      const activationLink = req.params.link;
+      await userService.activate(activationLink);
+      return res.redirect(process.env.SITE_URL);
+    } catch (error) {
+      next(error);
+    }
+  }
+  async refresh(req, res, next) {
+    try {
+      const { refreshToken } = req.cookies;
+      const userData = await userService.refresh(refreshToken);
+      res.cookie("refreshToken", userData.refreshToken, { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true });
+      return res.json({ userData });
+    } catch (error) {
+      next(error);
+    }
+  }
+  async getUsers(req, res, next) {
+    try {
+      const { nickname } = req.body;
+
+      const users = await userService.getAllUsers(nickname);
+      return res.json(users);
+    } catch (error) {
+      next(error);
+    }
   }
 }
 

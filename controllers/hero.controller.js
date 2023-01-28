@@ -1,29 +1,40 @@
-const { hero } = require("../models/models");
-const ApiError = require("../error/ApiError");
+const { hero, Synchronization, valueDayByDay } = require("../models/models");
+const ApiError = require("../exeptions/api-error");
+
+const ValueDBD = require("../service/valueDayByDay-service");
+const HeroService = require("../service/hero-service");
+const SynchronizationService = require("../service/synchronization-service");
+
 const uuid = require("uuid");
 const path = require("path");
 const fs = require("fs");
 
 class heroController {
   async createHero(req, res, next) {
-    const { date_start, date_end, name, image, valueDayByDay, imagePath, countStart, personId } = req.body;
+    const { date_start, date_end, name, image, valueDayByDay, imagePath, valueStart, personId } = req.body;
 
     if (!date_start || !name || !personId) {
       return next(ApiError.badRequest("Заданы не все поля"));
     }
-
+    const data = await SynchronizationService.createSynchronization(name, personId);
     if (imagePath == "false") {
-      const newHero = await hero.create({
-        date_start,
-        date_end,
-        name,
-        image,
-        imagePath,
-        countStart,
-        valueDayByDay,
-        personId,
-      });
-      return res.json(newHero);
+      try {
+        const newHero = await hero.create({
+          date_start,
+          date_end,
+          name,
+          image,
+          imagePath,
+          valueStart,
+          personId,
+          SynchronizationId: data.id,
+        });
+        console.log(newHero);
+        await ValueDBD.createValueDBD(date_start, date_end, valueDayByDay, newHero.dataValues.id);
+        return res.json(newHero);
+      } catch (error) {
+        ApiError.BadRequest(error);
+      }
     }
     const { img } = req.files;
     console.log(img);
@@ -40,32 +51,46 @@ class heroController {
         countStart,
         valueDayByDay,
         personId,
+        SynchronizationId: data.id,
       });
+      await ValueDBD.createValueDBD(date_start, date_end, valueDayByDay, newHero.id);
       res.json(newHero);
     } catch (error) {
-      return next(ApiError.badRequest("ошибка при создании"));
+      ApiError.BadRequest(error);
     }
   }
   async getHeros(req, res, next) {
-    const { personId } = req.body;
+    try {
+      const { personId } = req.body;
+      console.log(personId);
 
-    if (!personId) {
-      return next(ApiError.badRequest("Не задан personId"));
+      const userData = await HeroService.getHeroes(personId);
+
+      res.json(userData);
+    } catch (error) {
+      next(error);
     }
-    const rows = await hero.findAll({
-      where: { personId: personId },
-    });
-    res.json(rows);
   }
   async getOneHero(req, res, next) {
     const { id } = req.params;
     const { personId } = req.body;
 
     if (!personId || !id) {
-      return next(ApiError.badRequest("Не задан personId"));
+      ApiError.BadRequest("Не задан personId");
     }
     const row = await hero.findOne({
       where: { personId: personId, id: id },
+      include: [
+        {
+          model: Synchronization,
+        },
+        {
+          model: valueDayByDay,
+          where: {
+            heroId: id,
+          },
+        },
+      ],
     });
     if (!row) {
       return next(ApiError.badRequest("Персонажа не существует"));
@@ -73,23 +98,10 @@ class heroController {
     res.json(row);
   }
   async changeHero(req, res, next) {
-    const {
-      id,
-      date_start,
-      date_end,
-      name,
-      image,
-      imagePath,
-      valueDayByDay,
-      countAdd,
-      countStart,
-      countWishes,
-      countStarglitter,
-      synchValue,
-    } = req.body;
+    const { id, date_start, date_end, name, image, imagePath, valueAdd, valueStart, valueWishes } = req.body;
 
     if (!id) {
-      return next(ApiError.badRequest("id not found"));
+      ApiError.BadRequest("id not found");
     }
     const updRow = await hero.update(
       {
@@ -98,17 +110,14 @@ class heroController {
         name,
         image,
         imagePath,
-        valueDayByDay,
-        countAdd,
-        countStart,
-        countWishes,
-        countStarglitter,
-        synchValue,
+        valueAdd,
+        valueStart,
+        valueWishes,
       },
       { where: { id: id } }
     );
     if (updRow === 0) {
-      return next(ApiError.badRequest("Персонажа не существует"));
+      ApiError.BadRequest("Персонажа не существует");
     }
     res.json(updRow);
   }
@@ -120,19 +129,24 @@ class heroController {
       where: { id: id, personId: personId },
     });
     if (!row) {
-      return next(ApiError.badRequest("Персонаж не найден"));
+      return ApiError.BadRequest("Персонаж не найден");
     }
     if (row.imagePath) {
       try {
         fs.unlinkSync(path.resolve(__dirname, "..", "static", row.image));
       } catch (error) {
-        return next(ApiError.badRequest("Ошибка при удалении"));
+        return ApiError.BadRequest("Ошибка при удалении");
       }
     }
-
-    const deleteRow = await hero.destroy({ where: { id: id, personId: personId } });
-
-    res.json(deleteRow);
+    try {
+      await ValueDBD.deleteValueDBD(id, personId);
+      const row = await hero.findOne({ where: { id: id, personId: personId } });
+      const deleteRow = await hero.destroy({ where: { id: id, personId: personId } });
+      await SynchronizationService.deleteSynchronization(row.SynchronizationId);
+      res.json(deleteRow);
+    } catch (error) {
+      return ApiError.BadRequest("Ошибка при удалении");
+    }
   }
 }
 
